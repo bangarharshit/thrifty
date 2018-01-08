@@ -338,18 +338,12 @@ public final class ThriftyCodeGenerator {
         }
 
         TypeSpec builderSpec = builderFor(type, structTypeName, builderTypeName);
-        TypeSpec adapterSpec = adapterFor(type, structTypeName, builderTypeName);
 
         if (emitParcelable) {
             generateParcelable(type, structTypeName, structBuilder);
         }
 
         structBuilder.addType(builderSpec);
-        structBuilder.addType(adapterSpec);
-        structBuilder.addField(FieldSpec.builder(adapterSpec.superinterfaces.get(0), ADAPTER_FIELDNAME)
-                .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
-                .initializer("new $N()", adapterSpec)
-                .build());
 
         MethodSpec.Builder ctor = MethodSpec.constructorBuilder()
                 .addModifiers(Modifier.PRIVATE)
@@ -364,8 +358,7 @@ public final class ThriftyCodeGenerator {
 
             // Define field
             FieldSpec.Builder fieldBuilder = FieldSpec.builder(fieldTypeName, name)
-                    .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
-                    .addAnnotation(fieldAnnotation(field));
+                    .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
 
             if (emitAndroidAnnotations) {
                 ClassName anno = field.required() ? TypeNames.NOT_NULL : TypeNames.NULLABLE;
@@ -422,8 +415,6 @@ public final class ThriftyCodeGenerator {
         structBuilder.addMethod(ctor.build());
         structBuilder.addMethod(buildEqualsFor(type));
         structBuilder.addMethod(buildHashCodeFor(type));
-        structBuilder.addMethod(buildToStringFor(type));
-        structBuilder.addMethod(buildWrite());
 
         return structBuilder.build();
     }
