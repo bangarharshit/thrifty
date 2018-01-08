@@ -322,8 +322,7 @@ public final class ThriftyCodeGenerator {
         ClassName builderTypeName = structTypeName.nestedClass("Builder");
 
         TypeSpec.Builder structBuilder = TypeSpec.classBuilder(type.name())
-                .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
-                .addSuperinterface(Struct.class);
+                .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
 
         if (type.hasJavadoc()) {
             structBuilder.addJavadoc("$L", type.documentation());
@@ -338,18 +337,12 @@ public final class ThriftyCodeGenerator {
         }
 
         TypeSpec builderSpec = builderFor(type, structTypeName, builderTypeName);
-        TypeSpec adapterSpec = adapterFor(type, structTypeName, builderTypeName);
 
         if (emitParcelable) {
             generateParcelable(type, structTypeName, structBuilder);
         }
 
         structBuilder.addType(builderSpec);
-        structBuilder.addType(adapterSpec);
-        structBuilder.addField(FieldSpec.builder(adapterSpec.superinterfaces.get(0), ADAPTER_FIELDNAME)
-                .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL)
-                .initializer("new $N()", adapterSpec)
-                .build());
 
         MethodSpec.Builder ctor = MethodSpec.constructorBuilder()
                 .addModifiers(Modifier.PRIVATE)
@@ -364,8 +357,7 @@ public final class ThriftyCodeGenerator {
 
             // Define field
             FieldSpec.Builder fieldBuilder = FieldSpec.builder(fieldTypeName, name)
-                    .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
-                    .addAnnotation(fieldAnnotation(field));
+                    .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
 
             if (emitAndroidAnnotations) {
                 ClassName anno = field.required() ? TypeNames.NOT_NULL : TypeNames.NULLABLE;
@@ -422,8 +414,6 @@ public final class ThriftyCodeGenerator {
         structBuilder.addMethod(ctor.build());
         structBuilder.addMethod(buildEqualsFor(type));
         structBuilder.addMethod(buildHashCodeFor(type));
-        structBuilder.addMethod(buildToStringFor(type));
-        structBuilder.addMethod(buildWrite());
 
         return structBuilder.build();
     }
@@ -495,18 +485,11 @@ public final class ThriftyCodeGenerator {
             StructType structType,
             ClassName structClassName,
             ClassName builderClassName) {
-        TypeName builderSuperclassName = ParameterizedTypeName.get(TypeNames.BUILDER, structClassName);
         TypeSpec.Builder builder = TypeSpec.classBuilder("Builder")
-                .addSuperinterface(builderSuperclassName)
                 .addModifiers(Modifier.PUBLIC, Modifier.STATIC, Modifier.FINAL);
 
         MethodSpec.Builder buildMethodBuilder = MethodSpec.methodBuilder("build")
-                .addAnnotation(Override.class)
                 .returns(structClassName)
-                .addModifiers(Modifier.PUBLIC);
-
-        MethodSpec.Builder resetBuilder = MethodSpec.methodBuilder("reset")
-                .addAnnotation(Override.class)
                 .addModifiers(Modifier.PUBLIC);
 
         MethodSpec.Builder copyCtor = MethodSpec.constructorBuilder()
@@ -550,9 +533,6 @@ public final class ThriftyCodeGenerator {
                         false);
                 defaultCtor.addCode(initializer.build());
 
-                resetBuilder.addCode(initializer.build());
-            } else {
-                resetBuilder.addStatement("this.$N = null", fieldName);
             }
 
             builder.addField(f.build());
@@ -609,131 +589,8 @@ public final class ThriftyCodeGenerator {
         builder.addMethod(defaultCtor.build());
         builder.addMethod(copyCtor.build());
         builder.addMethod(buildMethodBuilder.build());
-        builder.addMethod(resetBuilder.build());
 
         return builder.build();
-    }
-
-    private TypeSpec adapterFor(StructType structType, ClassName structClassName, ClassName builderClassName) {
-        TypeName adapterSuperclass = ParameterizedTypeName.get(
-                TypeNames.ADAPTER,
-                structClassName,
-                builderClassName);
-
-        final MethodSpec.Builder write = MethodSpec.methodBuilder("write")
-                .addAnnotation(Override.class)
-                .addModifiers(Modifier.PUBLIC)
-                .addParameter(TypeNames.PROTOCOL, "protocol")
-                .addParameter(structClassName, "struct")
-                .addException(TypeNames.IO_EXCEPTION);
-
-        final MethodSpec.Builder read = MethodSpec.methodBuilder("read")
-                .addAnnotation(Override.class)
-                .addModifiers(Modifier.PUBLIC)
-                .returns(typeResolver.getJavaClass(structType))
-                .addParameter(TypeNames.PROTOCOL, "protocol")
-                .addParameter(builderClassName, "builder")
-                .addException(TypeNames.THRIFT_EXCEPTION)
-                .addException(TypeNames.IO_EXCEPTION);
-
-        final MethodSpec readHelper = MethodSpec.methodBuilder("read")
-                .addAnnotation(Override.class)
-                .addModifiers(Modifier.PUBLIC)
-                .returns(typeResolver.getJavaClass(structType))
-                .addParameter(TypeNames.PROTOCOL, "protocol")
-                .addException(TypeNames.THRIFT_EXCEPTION)
-                .addException(TypeNames.IO_EXCEPTION)
-                .addStatement("return read(protocol, new $T())", builderClassName)
-                .build();
-
-        // First, the writer
-        write.addStatement("protocol.writeStructBegin($S)", structType.name());
-
-        // Then, the reader - set up the field-reading loop.
-        read.addStatement("protocol.readStructBegin()");
-        read.beginControlFlow("while (true)");
-        read.addStatement("$T field = protocol.readFieldBegin()", TypeNames.FIELD_METADATA);
-        read.beginControlFlow("if (field.typeId == $T.STOP)", TypeNames.TTYPE);
-        read.addStatement("break");
-        read.endControlFlow();
-
-        if (structType.fields().size() > 0) {
-            read.beginControlFlow("switch (field.fieldId)");
-        }
-
-        for (Field field : structType.fields()) {
-            String fieldName = fieldNamer.getName(field);
-            boolean optional = !field.required(); // could also be default, but same-same to us.
-            final ThriftType tt = field.type().getTrueType();
-            byte typeCode = typeResolver.getTypeCode(tt);
-
-            // enums are i32 on the wire
-            if (typeCode == TType.ENUM) {
-                typeCode = TType.I32;
-            }
-
-            String typeCodeName = TypeNames.getTypeCodeName(typeCode);
-
-            // Write
-            if (optional) {
-                write.beginControlFlow("if (struct.$N != null)", fieldName);
-            }
-
-            write.addStatement(
-                    "protocol.writeFieldBegin($S, $L, $T.$L)",
-                    field.name(), // make sure that we write the Thrift IDL name, and not the name of the Java field
-                    field.id(),
-                    TypeNames.TTYPE,
-                    typeCodeName);
-
-            tt.accept(new GenerateWriterVisitor(typeResolver, write, "protocol", "struct", fieldName));
-
-            write.addStatement("protocol.writeFieldEnd()");
-
-            if (optional) {
-                write.endControlFlow();
-            }
-
-            // Read
-            read.beginControlFlow("case $L:", field.id());
-            new GenerateReaderVisitor(typeResolver, read, fieldName, field.type().getTrueType()).generate();
-            read.endControlFlow(); // end case block
-            read.addStatement("break");
-        }
-
-        write.addStatement("protocol.writeFieldStop()");
-        write.addStatement("protocol.writeStructEnd()");
-
-        if (structType.fields().size() > 0) {
-            read.beginControlFlow("default:");
-            read.addStatement("$T.skip(protocol, field.typeId)", TypeNames.PROTO_UTIL);
-            read.endControlFlow(); // end default
-            read.addStatement("break");
-            read.endControlFlow(); // end switch
-        }
-
-        read.addStatement("protocol.readFieldEnd()");
-        read.endControlFlow(); // end while
-        read.addStatement("protocol.readStructEnd()");
-        read.addStatement("return builder.build()");
-
-        return TypeSpec.classBuilder(structType.name() + "Adapter")
-                .addSuperinterface(adapterSuperclass)
-                .addModifiers(Modifier.PRIVATE, Modifier.STATIC, Modifier.FINAL)
-                .addMethod(write.build())
-                .addMethod(read.build())
-                .addMethod(readHelper)
-                .build();
-    }
-
-    private MethodSpec buildWrite() {
-        return MethodSpec.methodBuilder("write")
-                .addAnnotation(Override.class)
-                .addModifiers(Modifier.PUBLIC)
-                .addParameter(Protocol.class, "protocol")
-                .addStatement("ADAPTER.write(protocol, this)")
-                .addException(TypeNames.IO_EXCEPTION)
-                .build();
     }
 
     private MethodSpec buildEqualsFor(StructType struct) {
