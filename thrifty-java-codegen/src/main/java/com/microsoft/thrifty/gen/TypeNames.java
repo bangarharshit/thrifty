@@ -39,6 +39,7 @@ import com.microsoft.thrifty.util.ObfuscationUtil;
 import com.microsoft.thrifty.util.ProtocolUtil;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.TypeName;
+import io.reactivex.Single;
 import okio.ByteString;
 
 import java.io.IOException;
@@ -95,6 +96,7 @@ final class TypeNames {
     static final ClassName NULLABLE = ClassName.get("android.support.annotation", "Nullable");
 
     static final ClassName SERVICE_CALLBACK = ClassName.get(ServiceMethodCallback.class);
+    static final ClassName SINGLE_CALLBACK = ClassName.get(Single.class);
     static final ClassName SERVICE_CLIENT_BASE = ClassName.get(AsyncClientBase.class);
     static final ClassName SERVICE_CLIENT_LISTENER = ClassName.get(AsyncClientBase.Listener.class);
     static final ClassName SERVICE_METHOD_CALL = ClassName.get(MethodCall.class);
