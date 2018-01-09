@@ -25,6 +25,8 @@ dependencies {
     api project(":thrifty-compiler-plugins")
     api libraries.okio
     api libraries.javaPoet
+    api group: 'com.squareup.retrofit2', name: 'retrofit', version: '2.3.0'
+    api  group: 'io.reactivex.rxjava2', name: 'rxjava', version: '2.1.8'
 
     implementation project(':thrifty-runtime')
     implementation 'joda-time:joda-time:2.9.1'

@@ -93,8 +93,7 @@ final class ServiceBuilder {
                 methodBuilder.addParameter(paramTypeName, name);
 
             }
-
-            String callbackName = allocator.newName("callback", ++tag);
+            methodBuilder.addAnnotation(retrofit("/uber", RestMethodResolver.GET));
 
             ThriftType returnType = method.returnType();
             TypeName returnTypeName;
@@ -105,9 +104,9 @@ final class ServiceBuilder {
             }
 
             TypeName callbackInterfaceName = ParameterizedTypeName.get(
-                    TypeNames.SERVICE_CALLBACK, returnTypeName);
+                    TypeNames.SINGLE_CALLBACK, returnTypeName);
 
-            methodBuilder.addParameter(callbackInterfaceName, callbackName);
+            methodBuilder.returns(callbackInterfaceName);
 
             serviceSpec.addMethod(methodBuilder.build());
         }
@@ -419,5 +418,11 @@ final class ServiceBuilder {
         }
 
         return recv.build();
+    }
+
+    private AnnotationSpec retrofit(String url, RestMethodResolver restMethodResolver) {
+        AnnotationSpec.Builder retro = AnnotationSpec.builder(restMethodResolver.getRetrofitClass());
+        retro.addMember("value", "$S", url);
+        return retro.build();
     }
 }

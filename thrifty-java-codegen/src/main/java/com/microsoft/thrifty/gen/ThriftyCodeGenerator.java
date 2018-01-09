@@ -29,11 +29,8 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Multimap;
 import com.microsoft.thrifty.Obfuscated;
 import com.microsoft.thrifty.Redacted;
-import com.microsoft.thrifty.Struct;
-import com.microsoft.thrifty.TType;
 import com.microsoft.thrifty.ThriftField;
 import com.microsoft.thrifty.compiler.spi.TypeProcessor;
-import com.microsoft.thrifty.protocol.Protocol;
 import com.microsoft.thrifty.schema.BuiltinType;
 import com.microsoft.thrifty.schema.Constant;
 import com.microsoft.thrifty.schema.EnumMember;
@@ -62,12 +59,6 @@ import com.squareup.javapoet.NameAllocator;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
-
-import org.joda.time.format.DateTimeFormatter;
-import org.joda.time.format.ISODateTimeFormat;
-
-import javax.annotation.Nullable;
-import javax.lang.model.element.Modifier;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -81,6 +72,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.annotation.Nullable;
+import javax.lang.model.element.Modifier;
+import org.joda.time.format.DateTimeFormatter;
+import org.joda.time.format.ISODateTimeFormat;
 
 public final class ThriftyCodeGenerator {
     private static final String FILE_COMMENT =
@@ -255,12 +250,6 @@ public final class ThriftyCodeGenerator {
             }
 
             generatedTypes.add(file);
-
-            spec = serviceBuilder.buildService(type, spec);
-            file = assembleJavaFile(type, spec);
-            if (file != null) {
-                generatedTypes.add(file);
-            }
         }
 
         return generatedTypes.build();
