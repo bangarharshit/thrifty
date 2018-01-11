@@ -404,6 +404,23 @@ public final class ThriftyCodeGenerator {
                 ctor.addCode(assignment.add(";\n$]").build());
                 structBuilder.addMethod(ctor.build());
             }
+        } else {
+            MethodSpec.Builder constructor = MethodSpec.constructorBuilder()
+                .addModifiers(Modifier.PRIVATE);
+            for (Field field : type.fields()) {
+                String name = fieldNamer.getName(field);
+                ThriftType fieldType = field.type();
+                ThriftType trueType = fieldType.getTrueType();
+                TypeName fieldTypeName = typeResolver.getJavaClass(trueType);
+
+                // Define field
+                FieldSpec.Builder fieldBuilder = FieldSpec.builder(fieldTypeName, name)
+                    .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
+                structBuilder.addField(fieldBuilder.build());
+                constructor.addParameter(fieldTypeName, name);
+                constructor.addStatement("this.$N = $N", name, name);
+            }
+            structBuilder.addMethod(constructor.build());
         }
         structBuilder.addMethod(buildEqualsFor(type));
         structBuilder.addMethod(buildHashCodeFor(type));
