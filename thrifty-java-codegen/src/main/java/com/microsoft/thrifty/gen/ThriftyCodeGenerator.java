@@ -306,12 +306,16 @@ public final class ThriftyCodeGenerator {
     @VisibleForTesting
     @SuppressWarnings("WeakerAccess")
     TypeSpec buildStruct(StructType type) {
+        Map<String, String> stringMap = type.annotations();
+        boolean value = false;
+        if (stringMap.containsKey("thrifty.nobuilders")) {
+            value = Boolean.valueOf(stringMap.get("thrifty.nobuilders"));
+        }
         String packageName = type.getNamespaceFor(NamespaceScope.JAVA);
         ClassName structTypeName = ClassName.get(packageName, type.name());
-        ClassName builderTypeName = structTypeName.nestedClass("Builder");
 
         TypeSpec.Builder structBuilder = TypeSpec.classBuilder(type.name())
-                .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
+            .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
 
         if (type.hasJavadoc()) {
             structBuilder.addJavadoc("$L", type.documentation());
@@ -325,82 +329,99 @@ public final class ThriftyCodeGenerator {
             structBuilder.addAnnotation(AnnotationSpec.builder(Deprecated.class).build());
         }
 
-        TypeSpec builderSpec = builderFor(type, structTypeName, builderTypeName);
-
         if (emitParcelable) {
             generateParcelable(type, structTypeName, structBuilder);
         }
 
-        structBuilder.addType(builderSpec);
-
-        MethodSpec.Builder ctor = MethodSpec.constructorBuilder()
+        if (!value) {
+            ClassName builderTypeName = structTypeName.nestedClass("Builder");
+            TypeSpec builderSpec = builderFor(type, structTypeName, builderTypeName);
+            structBuilder.addType(builderSpec);
+            MethodSpec.Builder ctor = MethodSpec.constructorBuilder()
                 .addModifiers(Modifier.PRIVATE)
                 .addParameter(builderTypeName, "builder");
 
-        for (Field field : type.fields()) {
+            for (Field field : type.fields()) {
 
-            String name = fieldNamer.getName(field);
-            ThriftType fieldType = field.type();
-            ThriftType trueType = fieldType.getTrueType();
-            TypeName fieldTypeName = typeResolver.getJavaClass(trueType);
+                String name = fieldNamer.getName(field);
+                ThriftType fieldType = field.type();
+                ThriftType trueType = fieldType.getTrueType();
+                TypeName fieldTypeName = typeResolver.getJavaClass(trueType);
 
-            // Define field
-            FieldSpec.Builder fieldBuilder = FieldSpec.builder(fieldTypeName, name)
+                // Define field
+                FieldSpec.Builder fieldBuilder = FieldSpec.builder(fieldTypeName, name)
                     .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
 
-            if (emitAndroidAnnotations) {
-                ClassName anno = field.required() ? TypeNames.NOT_NULL : TypeNames.NULLABLE;
-                fieldBuilder.addAnnotation(anno);
-            }
-
-            if (field.hasJavadoc()) {
-                fieldBuilder = fieldBuilder.addJavadoc("$L", field.documentation());
-            }
-
-            if (field.isRedacted()) {
-                fieldBuilder = fieldBuilder.addAnnotation(AnnotationSpec.builder(Redacted.class).build());
-            }
-
-            if (field.isObfuscated()) {
-                fieldBuilder = fieldBuilder.addAnnotation(AnnotationSpec.builder(Obfuscated.class).build());
-            }
-
-            if (field.isDeprecated()) {
-                fieldBuilder = fieldBuilder.addAnnotation(AnnotationSpec.builder(Deprecated.class).build());
-            }
-
-            structBuilder.addField(fieldBuilder.build());
-
-            // Update the struct ctor
-
-            CodeBlock.Builder assignment = CodeBlock.builder().add("$[this.$N = ", name);
-
-            if (trueType.isList()) {
-                if (!field.required()) {
-                    assignment.add("builder.$N == null ? null : ", name);
+                if (emitAndroidAnnotations) {
+                    ClassName anno = field.required() ? TypeNames.NOT_NULL : TypeNames.NULLABLE;
+                    fieldBuilder.addAnnotation(anno);
                 }
-                assignment.add("$T.unmodifiableList(builder.$N)",
-                        TypeNames.COLLECTIONS, name);
-            } else if (trueType.isSet()) {
-                if (!field.required()) {
-                    assignment.add("builder.$N == null ? null : ", name);
-                }
-                assignment.add("$T.unmodifiableSet(builder.$N)",
-                        TypeNames.COLLECTIONS, name);
-            } else if (trueType.isMap()) {
-                if (!field.required()) {
-                    assignment.add("builder.$N == null ? null : ", name);
-                }
-                assignment.add("$T.unmodifiableMap(builder.$N)",
-                        TypeNames.COLLECTIONS, name);
-            } else {
-                assignment.add("builder.$N", name);
-            }
 
-            ctor.addCode(assignment.add(";\n$]").build());
+                if (field.hasJavadoc()) {
+                    fieldBuilder = fieldBuilder.addJavadoc("$L", field.documentation());
+                }
+
+                if (field.isRedacted()) {
+                    fieldBuilder = fieldBuilder.addAnnotation(AnnotationSpec.builder(Redacted.class).build());
+                }
+
+                if (field.isObfuscated()) {
+                    fieldBuilder = fieldBuilder.addAnnotation(AnnotationSpec.builder(Obfuscated.class).build());
+                }
+
+                if (field.isDeprecated()) {
+                    fieldBuilder = fieldBuilder.addAnnotation(AnnotationSpec.builder(Deprecated.class).build());
+                }
+
+                structBuilder.addField(fieldBuilder.build());
+
+                // Update the struct ctor
+
+                CodeBlock.Builder assignment = CodeBlock.builder().add("$[this.$N = ", name);
+
+                if (trueType.isList()) {
+                    if (!field.required()) {
+                        assignment.add("builder.$N == null ? null : ", name);
+                    }
+                    assignment.add("$T.unmodifiableList(builder.$N)",
+                        TypeNames.COLLECTIONS, name);
+                } else if (trueType.isSet()) {
+                    if (!field.required()) {
+                        assignment.add("builder.$N == null ? null : ", name);
+                    }
+                    assignment.add("$T.unmodifiableSet(builder.$N)",
+                        TypeNames.COLLECTIONS, name);
+                } else if (trueType.isMap()) {
+                    if (!field.required()) {
+                        assignment.add("builder.$N == null ? null : ", name);
+                    }
+                    assignment.add("$T.unmodifiableMap(builder.$N)",
+                        TypeNames.COLLECTIONS, name);
+                } else {
+                    assignment.add("builder.$N", name);
+                }
+
+                ctor.addCode(assignment.add(";\n$]").build());
+                structBuilder.addMethod(ctor.build());
+            }
+        } else {
+            MethodSpec.Builder constructor = MethodSpec.constructorBuilder()
+                .addModifiers(Modifier.PRIVATE);
+            for (Field field : type.fields()) {
+                String name = fieldNamer.getName(field);
+                ThriftType fieldType = field.type();
+                ThriftType trueType = fieldType.getTrueType();
+                TypeName fieldTypeName = typeResolver.getJavaClass(trueType);
+
+                // Define field
+                FieldSpec.Builder fieldBuilder = FieldSpec.builder(fieldTypeName, name)
+                    .addModifiers(Modifier.PUBLIC, Modifier.FINAL);
+                structBuilder.addField(fieldBuilder.build());
+                constructor.addParameter(fieldTypeName, name);
+                constructor.addStatement("this.$N = $N", name, name);
+            }
+            structBuilder.addMethod(constructor.build());
         }
-
-        structBuilder.addMethod(ctor.build());
         structBuilder.addMethod(buildEqualsFor(type));
         structBuilder.addMethod(buildHashCodeFor(type));
 
