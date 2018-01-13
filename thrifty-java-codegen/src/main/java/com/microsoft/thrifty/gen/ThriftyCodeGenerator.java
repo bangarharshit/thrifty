@@ -426,8 +426,8 @@ public final class ThriftyCodeGenerator {
                 }
 
                 ctor.addCode(assignment.add(";\n$]").build());
-                structBuilder.addMethod(ctor.build());
             }
+            structBuilder.addMethod(ctor.build());
         } else {
             MethodSpec.Builder constructor = MethodSpec.constructorBuilder()
                 .addModifiers(Modifier.PRIVATE);
