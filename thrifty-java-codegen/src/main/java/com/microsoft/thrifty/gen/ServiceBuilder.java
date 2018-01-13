@@ -425,4 +425,14 @@ final class ServiceBuilder {
         retro.addMember("value", "$S", url);
         return retro.build();
     }
+
+    void populateRequestType(ServiceType service) {
+        for (ServiceMethod method : service.methods()) {
+            for (Field field : method.parameters()) {
+                ThriftType paramType = field.type().getTrueType();
+                TypeName paramTypeName = typeResolver.getJavaClass(paramType);
+                ThriftyCodeGenerator.REQUEST_TYPES.add(paramTypeName);
+            }
+        }
+    }
 }
