@@ -43,6 +43,7 @@ import com.microsoft.thrifty.schema.Location;
 import com.microsoft.thrifty.schema.MapType;
 import com.microsoft.thrifty.schema.NamespaceScope;
 import com.microsoft.thrifty.schema.Schema;
+import com.microsoft.thrifty.schema.ServiceMethod;
 import com.microsoft.thrifty.schema.ServiceType;
 import com.microsoft.thrifty.schema.SetType;
 import com.microsoft.thrifty.schema.StructType;
@@ -201,6 +202,12 @@ public final class ThriftyCodeGenerator {
         for (ServiceType serviceType : schema.services()) {
             serviceBuilder.populateRequestType(serviceType);
         }
+        for (StructType structType : schema.structs()) {
+            populateRequestType(structType);
+        }
+        for (StructType structType : schema.unions()) {
+            populateRequestType(structType);
+        }
         for (EnumType type : schema.enums()) {
             TypeSpec spec = buildEnum(type);
             JavaFile file = assembleJavaFile(type, spec);
@@ -261,6 +268,17 @@ public final class ThriftyCodeGenerator {
         return generatedTypes.build();
     }
 
+    private void populateRequestType(StructType structType) {
+        ThriftType paramType = structType.getTrueType();
+        TypeName paramTypeName = typeResolver.getJavaClass(paramType);
+        if (ThriftyCodeGenerator.REQUEST_TYPES.contains(paramTypeName)) {
+            for (Field field : structType.fields()) {
+                ThriftType thriftType = field.type().getTrueType();
+                ThriftyCodeGenerator.REQUEST_TYPES.add(typeResolver.getJavaClass(thriftType));
+            }
+        }
+    }
+
     private interface FileWriter {
         void write(@Nullable JavaFile file) throws IOException;
     }
@@ -313,13 +331,9 @@ public final class ThriftyCodeGenerator {
     @SuppressWarnings("WeakerAccess")
     TypeSpec buildStruct(StructType type) {
         Map<String, String> stringMap = type.annotations();
-        boolean value = false;
-        //if (stringMap.containsKey("thrifty.nobuilders")) {
-        //    value = Boolean.valueOf(stringMap.get("thrifty.nobuilders"));
-        //}
         ThriftType inputType = type.getTrueType();
         TypeName inputTypeName = typeResolver.getJavaClass(inputType);
-        value = REQUEST_TYPES.contains(inputTypeName);
+        boolean value = REQUEST_TYPES.contains(inputTypeName);
         Logger.getGlobal().info("contains type" + " " + value + " " + inputTypeName);
         String packageName = type.getNamespaceFor(NamespaceScope.JAVA);
         ClassName structTypeName = ClassName.get(packageName, type.name());
