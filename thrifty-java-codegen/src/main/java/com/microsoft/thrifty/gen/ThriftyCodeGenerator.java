@@ -29,7 +29,6 @@ import com.google.common.collect.Iterables;
 import com.google.common.collect.Multimap;
 import com.microsoft.thrifty.Obfuscated;
 import com.microsoft.thrifty.Redacted;
-import com.microsoft.thrifty.Struct;
 import com.microsoft.thrifty.ThriftField;
 import com.microsoft.thrifty.compiler.spi.TypeProcessor;
 import com.microsoft.thrifty.schema.BuiltinType;
@@ -43,7 +42,6 @@ import com.microsoft.thrifty.schema.Location;
 import com.microsoft.thrifty.schema.MapType;
 import com.microsoft.thrifty.schema.NamespaceScope;
 import com.microsoft.thrifty.schema.Schema;
-import com.microsoft.thrifty.schema.ServiceMethod;
 import com.microsoft.thrifty.schema.ServiceType;
 import com.microsoft.thrifty.schema.SetType;
 import com.microsoft.thrifty.schema.StructType;
@@ -74,7 +72,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.logging.Logger;
 import javax.annotation.Nullable;
 import javax.lang.model.element.Modifier;
 import org.joda.time.format.DateTimeFormatter;
@@ -86,7 +83,6 @@ public final class ThriftyCodeGenerator {
             + "Generated on: ";
 
     public final static Set<TypeName> REQUEST_TYPES = new HashSet<>();
-    public static final String ADAPTER_FIELDNAME = "ADAPTER";
 
     private static final DateTimeFormatter DATE_FORMATTER =
             ISODateTimeFormat.dateTime().withZoneUTC();
@@ -199,14 +195,9 @@ public final class ThriftyCodeGenerator {
     public ImmutableList<JavaFile> generateTypes() {
         ImmutableList.Builder<JavaFile> generatedTypes = ImmutableList.builder();
 
+        Set<TypeName> typeNames = new HashSet<>();
         for (ServiceType serviceType : schema.services()) {
-            serviceBuilder.populateRequestType(serviceType);
-        }
-        for (StructType structType : schema.structs()) {
-            populateRequestType(structType);
-        }
-        for (StructType structType : schema.unions()) {
-            populateRequestType(structType);
+            serviceBuilder.populateRequestType(serviceType, typeNames);
         }
         for (EnumType type : schema.enums()) {
             TypeSpec spec = buildEnum(type);
@@ -217,7 +208,7 @@ public final class ThriftyCodeGenerator {
         }
 
         for (StructType type : schema.structs()) {
-            TypeSpec spec = buildStruct(type);
+            TypeSpec spec = buildStruct(type, typeNames);
             JavaFile file = assembleJavaFile(type, spec);
             if (file != null) {
                 generatedTypes.add(file);
@@ -225,7 +216,7 @@ public final class ThriftyCodeGenerator {
         }
 
         for (StructType type : schema.exceptions()) {
-            TypeSpec spec = buildStruct(type);
+            TypeSpec spec = buildStruct(type, typeNames);
             JavaFile file = assembleJavaFile(type, spec);
             if (file != null) {
                 generatedTypes.add(file);
@@ -233,7 +224,7 @@ public final class ThriftyCodeGenerator {
         }
 
         for (StructType type : schema.unions()) {
-            TypeSpec spec = buildStruct(type);
+            TypeSpec spec = buildStruct(type, typeNames);
             JavaFile file = assembleJavaFile(type, spec);
             if (file != null) {
                 generatedTypes.add(file);
@@ -266,17 +257,6 @@ public final class ThriftyCodeGenerator {
         }
 
         return generatedTypes.build();
-    }
-
-    private void populateRequestType(StructType structType) {
-        ThriftType paramType = structType.getTrueType();
-        TypeName paramTypeName = typeResolver.getJavaClass(paramType);
-        if (ThriftyCodeGenerator.REQUEST_TYPES.contains(paramTypeName)) {
-            for (Field field : structType.fields()) {
-                ThriftType thriftType = field.type().getTrueType();
-                ThriftyCodeGenerator.REQUEST_TYPES.add(typeResolver.getJavaClass(thriftType));
-            }
-        }
     }
 
     private interface FileWriter {
@@ -329,12 +309,10 @@ public final class ThriftyCodeGenerator {
 
     @VisibleForTesting
     @SuppressWarnings("WeakerAccess")
-    TypeSpec buildStruct(StructType type) {
-        Map<String, String> stringMap = type.annotations();
+    TypeSpec buildStruct(StructType type, Set<TypeName> typeNames) {
         ThriftType inputType = type.getTrueType();
         TypeName inputTypeName = typeResolver.getJavaClass(inputType);
-        boolean value = REQUEST_TYPES.contains(inputTypeName);
-        Logger.getGlobal().info("contains type" + " " + value + " " + inputTypeName);
+        boolean value = typeNames.contains(inputTypeName);
         String packageName = type.getNamespaceFor(NamespaceScope.JAVA);
         ClassName structTypeName = ClassName.get(packageName, type.name());
 

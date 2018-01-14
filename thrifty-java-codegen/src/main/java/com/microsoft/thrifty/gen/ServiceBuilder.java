@@ -21,14 +21,22 @@
 package com.microsoft.thrifty.gen;
 
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableSet;
+import com.microsoft.thrifty.Struct;
 import com.microsoft.thrifty.TType;
 import com.microsoft.thrifty.ThriftException;
 import com.microsoft.thrifty.schema.BuiltinType;
+import com.microsoft.thrifty.schema.EnumType;
 import com.microsoft.thrifty.schema.Field;
+import com.microsoft.thrifty.schema.ListType;
+import com.microsoft.thrifty.schema.MapType;
 import com.microsoft.thrifty.schema.NamespaceScope;
 import com.microsoft.thrifty.schema.ServiceMethod;
 import com.microsoft.thrifty.schema.ServiceType;
+import com.microsoft.thrifty.schema.SetType;
+import com.microsoft.thrifty.schema.StructType;
 import com.microsoft.thrifty.schema.ThriftType;
+import com.microsoft.thrifty.schema.TypedefType;
 import com.squareup.javapoet.AnnotationSpec;
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.CodeBlock;
@@ -40,6 +48,10 @@ import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
 
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.logging.Logger;
 import javax.lang.model.element.Modifier;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -426,12 +438,28 @@ final class ServiceBuilder {
         return retro.build();
     }
 
-    void populateRequestType(ServiceType service) {
+    void populateRequestType(ServiceType service, Set<TypeName> typeNames) {
         for (ServiceMethod method : service.methods()) {
             for (Field field : method.parameters()) {
                 ThriftType paramType = field.type().getTrueType();
-                TypeName paramTypeName = typeResolver.getJavaClass(paramType);
-                ThriftyCodeGenerator.REQUEST_TYPES.add(paramTypeName);
+                if (paramType instanceof StructType) {
+                    requestTypes((StructType) paramType, typeNames);
+                }
+            }
+        }
+    }
+
+    private void requestTypes(StructType structType, Set<TypeName> typeNames) {
+        TypeName paramTypeName = typeResolver.getJavaClass(structType);
+        Logger.getGlobal().info(paramTypeName.toString());
+        if (typeNames.contains(paramTypeName)) {
+            return;
+        }
+        typeNames.add(paramTypeName);
+        for (Field field : structType.fields()) {
+            ThriftType thriftType = field.type().getTrueType();
+            if (thriftType instanceof StructType) {
+                requestTypes((StructType) thriftType, typeNames);
             }
         }
     }
