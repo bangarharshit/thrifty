@@ -45,7 +45,6 @@ import com.squareup.javapoet.ParameterSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Locale;
@@ -84,6 +83,9 @@ final class ServiceBuilder {
         }
 
         for (ServiceMethod method : service.methods()) {
+            if (!method.annotations().containsKey("whitelisted")) {
+                continue;
+            }
             NameAllocator allocator = new NameAllocator();
             int tag = 0;
 

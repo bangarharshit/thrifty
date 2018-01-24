@@ -23,5 +23,7 @@ struct SmallResult {
 }
 
 service Google {
-  list<SearchResult> search(1: Query query)(whitelisted="true")
+  list<SearchResult> search(1: Query query)(whitelisted="true"),
+
+  list<SmallResult> searchSmall(1: referenced.Unused query)
 }
