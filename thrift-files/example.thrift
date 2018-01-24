@@ -1,9 +1,11 @@
 namespace java com.foo.bar
 
+include "referenced.thrift"
 struct Query {
   1: required string text,
   2: required i64 resultsNewerThan
   3: required Input input
+  4: required referenced.Used used
 }
 
 struct Input {
@@ -21,5 +23,5 @@ struct SmallResult {
 }
 
 service Google {
-  list<SearchResult> search(1: Query query)
+  list<SearchResult> search(1: Query query)(whitelisted="true")
 }

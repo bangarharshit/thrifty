@@ -21,8 +21,6 @@
 package com.microsoft.thrifty.gen;
 
 import com.google.common.base.Strings;
-import com.google.common.collect.ImmutableSet;
-import com.microsoft.thrifty.Struct;
 import com.microsoft.thrifty.TType;
 import com.microsoft.thrifty.ThriftException;
 import com.microsoft.thrifty.schema.BuiltinType;
@@ -47,14 +45,14 @@ import com.squareup.javapoet.ParameterSpec;
 import com.squareup.javapoet.ParameterizedTypeName;
 import com.squareup.javapoet.TypeName;
 import com.squareup.javapoet.TypeSpec;
-
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Logger;
 import javax.lang.model.element.Modifier;
-import java.util.Locale;
-import java.util.concurrent.atomic.AtomicInteger;
 
 final class ServiceBuilder {
     private final TypeResolver typeResolver;
@@ -438,12 +436,25 @@ final class ServiceBuilder {
         return retro.build();
     }
 
-    void populateRequestType(ServiceType service, Set<TypeName> typeNames) {
+    void populateRequestType(ServiceType service, Set<TypeName> requestTypeNames, Set<TypeName> whitelistedTypeNames) {
         for (ServiceMethod method : service.methods()) {
+            if (!method.annotations().containsKey("whitelisted")) {
+                continue;
+            }
             for (Field field : method.parameters()) {
                 ThriftType paramType = field.type().getTrueType();
                 if (paramType instanceof StructType) {
-                    requestTypes((StructType) paramType, typeNames);
+                    requestTypes((StructType) paramType, requestTypeNames);
+                }
+            }
+            ThriftType returnType = method.returnType().getTrueType();
+            if (returnType instanceof StructType) {
+                reachableNode((StructType) returnType, whitelistedTypeNames);
+            } else if (returnType instanceof ListType) {
+                ListType listType = (ListType) returnType;
+                ThriftType elementType = listType.elementType().getTrueType();
+                if (elementType instanceof StructType) {
+                    reachableNode((StructType) elementType, whitelistedTypeNames);
                 }
             }
         }
@@ -462,5 +473,126 @@ final class ServiceBuilder {
                 requestTypes((StructType) thriftType, typeNames);
             }
         }
+    }
+
+    private void reachableNode(StructType structType, Set<TypeName> typeNames) {
+        TypeName paramTypeName = typeResolver.getJavaClass(structType);
+        Logger.getGlobal().info(paramTypeName.toString());
+        if (typeNames.contains(paramTypeName)) {
+            return;
+        }
+        typeNames.add(paramTypeName);
+        for (Field field : structType.fields()) {
+            ThriftType thriftType = field.type().getTrueType();
+            if (thriftType instanceof StructType) {
+                reachableNode((StructType) thriftType, typeNames);
+            }
+        }
+    }
+
+    public void reachableVisitorExternal(ServiceType serviceType, Set<TypeName> requestTypeNames, Set<TypeName> whitelistedTypeNames) {
+        reachableVisitor(serviceType, whitelistedTypeNames, false);
+        reachableVisitor(serviceType, requestTypeNames, true);
+    }
+
+    private Set<TypeName> reachableVisitor(ThriftType thriftType, Set<TypeName> typeNames, boolean requestTypes) {
+        TypeName paramTypeName = typeResolver.getJavaClass(thriftType);
+        Logger.getGlobal().info(paramTypeName.toString());
+        if (typeNames.contains(paramTypeName)) {
+            return Collections.emptySet();
+        }
+        typeNames.add(paramTypeName);
+        return thriftType.accept(new ThriftType.Visitor<Set<TypeName>>() {
+            @Override public Set<TypeName> visitVoid(BuiltinType voidType) {
+                return Collections.emptySet();
+            }
+
+            @Override public Set<TypeName> visitBool(BuiltinType boolType) {
+                return Collections.emptySet();
+            }
+
+            @Override public Set<TypeName> visitByte(BuiltinType byteType) {
+                return Collections.emptySet();
+            }
+
+            @Override public Set<TypeName> visitI16(BuiltinType i16Type) {
+                return Collections.emptySet();
+            }
+
+            @Override public Set<TypeName> visitI32(BuiltinType i32Type) {
+                return Collections.emptySet();
+            }
+
+            @Override public Set<TypeName> visitI64(BuiltinType i64Type) {
+                return Collections.emptySet();
+            }
+
+            @Override public Set<TypeName> visitDouble(BuiltinType doubleType) {
+                return Collections.emptySet();
+            }
+
+            @Override public Set<TypeName> visitString(BuiltinType stringType) {
+                return Collections.emptySet();
+            }
+
+            @Override public Set<TypeName> visitBinary(BuiltinType binaryType) {
+                return Collections.emptySet();
+            }
+
+            @Override public Set<TypeName> visitEnum(EnumType enumType) {
+                return Collections.emptySet();
+            }
+
+            @Override public Set<TypeName> visitList(ListType listType) {
+                ThriftType elementType = listType.elementType().getTrueType();
+                return reachableVisitor(elementType, typeNames, requestTypes);
+            }
+
+            @Override public Set<TypeName> visitSet(SetType setType) {
+                ThriftType elementType = setType.elementType().getTrueType();
+                return reachableVisitor(elementType, typeNames, requestTypes);
+            }
+
+            @Override public Set<TypeName> visitMap(MapType mapType) {
+                Set<TypeName> typeNameSet = new HashSet<>();
+                ThriftType keyType = mapType.keyType().getTrueType();
+                ThriftType valueType = mapType.valueType().getTrueType();
+                typeNameSet.addAll(reachableVisitor(keyType, typeNames, requestTypes));
+                typeNameSet.addAll(reachableVisitor(valueType, typeNames, requestTypes));
+                return typeNameSet;
+            }
+
+            @Override public Set<TypeName> visitStruct(StructType structType) {
+                Set<TypeName> typeNameSet = new HashSet<>();
+                for (Field field : structType.fields()) {
+                    ThriftType thriftType = field.type().getTrueType();
+                    typeNameSet.addAll(reachableVisitor(thriftType, typeNames, requestTypes));
+                }
+                return typeNameSet;
+            }
+
+            @Override public Set<TypeName> visitTypedef(TypedefType typedefType) {
+                return Collections.emptySet();
+            }
+
+            @Override public Set<TypeName> visitService(ServiceType serviceType) {
+                Set<TypeName> typeNameSet = new HashSet<>();
+                for (ServiceMethod method : serviceType.methods()) {
+                    if (!method.annotations().containsKey("whitelisted")) {
+                        continue;
+                    }
+                    for (Field field : method.parameters()) {
+                        ThriftType paramType = field.type().getTrueType();
+                        typeNameSet.addAll(reachableVisitor(paramType, typeNames, requestTypes));
+                    }
+                    if (requestTypes) {
+                        continue;
+                    }
+                    ThriftType returnType = method.returnType().getTrueType();
+                    typeNameSet.addAll(reachableVisitor(returnType, typeNames, false));
+                }
+                return typeNameSet;
+            }
+        });
     }
 }
